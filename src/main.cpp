@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
+#include "spline.h"
 
 using namespace std;
 
@@ -163,6 +164,20 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+int limit(int current_wp, const vector<double> map_waypoints_x)
+{
+	//double current_wp = map_waypoints_x[0];
+	for (int i = 1; i < map_waypoints_x.size(); i++)
+	{
+		if (current_wp > map_waypoints_x[i])
+		{
+			return current_wp;
+		}
+		current_wp = map_waypoints_x[i];
+	}
+	return -1;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -199,6 +214,22 @@ int main() {
   	map_waypoints_dx.push_back(d_x);
   	map_waypoints_dy.push_back(d_y);
   }
+
+	cout << "Waypoint counts, x, y, dx, dy, s" << endl;
+	cout << map_waypoints_x.size() << " " << map_waypoints_y.size() << " " << map_waypoints_dx.size() 
+	<< " " << map_waypoints_dy.size() << " " << map_waypoints_s.size() << endl;
+	cout << "First 5 waypoints:" << endl;
+	for (int i = 0; i < 5; i++)
+	{
+		cout << "x: " << map_waypoints_x[i] << ", y: " << map_waypoints_y[i] << ", s: " << map_waypoints_s[i] << ", dx: " << map_waypoints_dx[i] << ", dy: " << map_waypoints_dy[i] << endl;
+	}
+
+	tk::spline s;
+	vector<double> wp_x(map_waypoints_x.begin(),map_waypoints_x.begin()+10);
+	vector<double> wp_y(map_waypoints_y.begin(),map_waypoints_y.begin()+10);
+  s.set_points(wp_x, wp_y);    // currently it is required that X is already sorted
+  double x=800;
+  printf("Spline test at %f is %f\n", x, s(x));
 
   h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -242,9 +273,97 @@ int main() {
           	vector<double> next_x_vals;
           	vector<double> next_y_vals;
 
+						int previous_path_size = previous_path_x.size();
+						double target_speed = 20;
+						double wp_time_gap = 0.02;
 
-          	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-          	msgJson["next_x"] = next_x_vals;
+						// reference
+						double ref_x = car_x;
+						double ref_y = car_y;
+						double ref_yaw = deg2rad(car_yaw);
+
+						// points to interpolate with spline
+						vector<double> ptsx;
+						vector<double> ptsy;
+
+						if (previous_path_size < 2)
+						{
+							double previous_car_x = car_x - cos(car_yaw);
+							double previous_car_y = car_y - sin(car_yaw);
+							ptsx.push_back(previous_car_x);
+							ptsy.push_back(previous_car_y);
+							ptsx.push_back(car_x);
+							ptsx.push_back(car_y);
+						}
+						else // start at end of previous path
+						{
+							ref_x = previous_path_x[previous_path_size-1];
+							ref_y = previous_path_y[previous_path_size-1];
+							double ref_x_prev = previous_path_x[previous_path_size-2];
+							double ref_y_prev = previous_path_y[previous_path_size-2];
+							ref_yaw = atan2(ref_y-ref_y_prev, ref_x - ref_x_prev);
+							ptsx.push_back(ref_x_prev);
+							ptsy.push_back(ref_y_prev);
+							ptsx.push_back(ref_x);
+							ptsy.push_back(ref_y);
+						}
+
+						for (int i = 0; i<5; i++)
+						{
+							vector<double> next_sparse_wp = getXY(car_s+10*i, car_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+							ptsx.push_back(next_sparse_wp[0]);
+							ptsy.push_back(next_sparse_wp[1]); 
+						}
+
+						for (int i = 0; i< ptsx.size(); i++)
+						{
+							double shift_x = ptsx[i] - ref_x;
+							double shift_y = ptsy[i] - ref_y;
+							ptsx[i] = (shift_x*cos(0-ref_yaw)-shift_y*sin(0-ref_yaw));
+							ptsy[i] = (shift_x*sin(0-ref_yaw)-shift_y*cos(0-ref_yaw));
+						}
+
+						tk::spline s;
+						s.set_points(ptsx, ptsy);
+						vector<double> next_x_vals;
+						vector<double> next_y_vals;
+
+						for (int i = 0; i< previous_path_size; i++)
+						{
+							next_x_vals.push_back(previous_path_x[i]);
+							next_y_vals.push_back(previous_path_y[i]);
+						}
+
+						// s = d/t
+						double wp_spacing = target_speed/wp_time_gap;
+
+
+
+
+
+
+          	// Define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
+
+
+							int previous_wp = ClosestWaypoint(car_x, car_y, map_waypoints_x, map_waypoints_y);
+							int next_wp = NextWaypoint(car_x, car_y, car_yaw, map_waypoints_x, map_waypoints_y);
+							if (previous_wp == next_wp)
+							{
+								previous_wp = previous_wp - 1;
+							}
+							double dist_inc = 0.3;
+							for (int i = 0; i < 50; i++)
+							{
+								double next_s = car_s + (i+1) * dist_inc;
+								double next_d = car_d;
+								vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+								next_x_vals.push_back(xy[0]);
+								next_y_vals.push_back(xy[1]);
+							}
+						}
+
+						// END
+						msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
