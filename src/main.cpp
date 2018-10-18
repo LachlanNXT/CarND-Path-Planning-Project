@@ -345,22 +345,21 @@ int main() {
           	// Define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 
 
-							int previous_wp = ClosestWaypoint(car_x, car_y, map_waypoints_x, map_waypoints_y);
-							int next_wp = NextWaypoint(car_x, car_y, car_yaw, map_waypoints_x, map_waypoints_y);
-							if (previous_wp == next_wp)
-							{
-								previous_wp = previous_wp - 1;
-							}
-							double dist_inc = 0.3;
-							for (int i = 0; i < 50; i++)
-							{
-								double next_s = car_s + (i+1) * dist_inc;
-								double next_d = car_d;
-								vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-								next_x_vals.push_back(xy[0]);
-								next_y_vals.push_back(xy[1]);
-							}
-						}
+						// int previous_wp = ClosestWaypoint(car_x, car_y, map_waypoints_x, map_waypoints_y);
+						// int next_wp = NextWaypoint(car_x, car_y, car_yaw, map_waypoints_x, map_waypoints_y);
+						// if (previous_wp == next_wp)
+						// {
+						// 	previous_wp = previous_wp - 1;
+						// }
+						// double dist_inc = 0.4;
+						// for (int i = 0; i < 50; i++)
+						// {
+						// 	double next_s = car_s + (i+1) * dist_inc;
+						// 	double next_d = car_d;
+						// 	vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						// 	next_x_vals.push_back(xy[0]);
+						// 	next_y_vals.push_back(xy[1]);
+						// }
 
 						// END
 						msgJson["next_x"] = next_x_vals;
