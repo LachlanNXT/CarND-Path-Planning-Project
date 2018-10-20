@@ -1,6 +1,11 @@
 # CarND-Path-Planning-Project
-Self-Driving Car Engineer Nanodegree Program
+Self-Driving Car Engineer Nanodegree Program  
 Video of this code in action: https://youtu.be/DicghCRyzKU
+
+[//]: # (Image References)
+[image1]: ./PathPlanner.png
+
+![alt text][image1]
 
 ## Instructions
 1. Clone this repo.
