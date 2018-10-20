@@ -326,9 +326,13 @@ int main() {
 					double current_lane = getLanefromD(car_d);
 					double target_lane = current_lane;
 
-					vector<vector<double>> remotes_lane0;
-					vector<vector<double>> remotes_lane1;
-					vector<vector<double>> remotes_lane2;
+					// ordered by lane, then by close/far
+					vector<vector<int>> remotes_lanes;
+					for (int i=0; i<3; i++)
+					{
+						vector<int> lanes = {0, 0};
+						remotes_lanes.push_back(lanes);
+					}
 					bool change_lanes = false;
 					for (int i = 0; i< sensor_fusion.size(); i++)
 					{
@@ -346,25 +350,35 @@ int main() {
 						double s_diff = rs - my_s;
 						// If the car will be close in the future, we need to take action
 						// if close, ahead, same lane
-						if ( (s_diff < 30) && (s_diff > 0) && (r_lane == current_lane) )
-						{
-							change_lanes = true;
-						}
 						if ( (s_diff < 20) && (s_diff > 0) && (r_lane == current_lane) )
 						{
+							change_lanes = true;
 							target_speed = r_vel;
 						}
+						// count the cars that would prevent lane change
 						if (0 == r_lane && (s_diff < 20) && (s_diff > -10))
 						{
-							remotes_lane0.push_back(sensor_fusion[i]);
+							remotes_lanes[0][0]++;
+						}
+						if (0 == r_lane && (s_diff < 50) && (s_diff > 20))
+						{
+							remotes_lanes[0][1]++;
 						}
 						if (1 == r_lane && (s_diff < 20) && (s_diff > -10))
 						{
-							remotes_lane1.push_back(sensor_fusion[i]);
+							remotes_lanes[1][0]++;
+						}
+						if (1 == r_lane && (s_diff < 50) && (s_diff > 20))
+						{
+							remotes_lanes[1][1]++;
 						}
 						if (2 == r_lane && (s_diff < 20) && (s_diff > -10))
 						{
-							remotes_lane2.push_back(sensor_fusion[i]);
+							remotes_lanes[2][0]++;
+						}
+						if (2 == r_lane && (s_diff < 50) && (s_diff > 20))
+						{
+							remotes_lanes[2][1]++;
 						}
 					}
 					// cout << "Intersting Cars in lanes:" << endl;
@@ -375,22 +389,32 @@ int main() {
 					// This is basically a state machine...
 					if (change_lanes)
 					{
-						if (0 == current_lane && remotes_lane1.size() == 0)
+						if (0 == current_lane && remotes_lanes[1][0] == 0)
 						{
 							target_lane = 1;
 						}
-						if (2 == current_lane && remotes_lane1.size() == 0)
+						if (2 == current_lane && remotes_lanes[1][0] == 0)
 						{
 							target_lane = 1;
 						}
-						if (1 == current_lane && remotes_lane0.size() == 0)
+						if (1 == current_lane)
 						{
-							target_lane = 0;
-						}	else if (1 == current_lane && remotes_lane2.size() == 0)
-						{
-							target_lane = 2;
-						}
-						
+							vector<int> costs = {(10 * remotes_lanes[0][0] + remotes_lanes[0][1]),
+																			9,
+																			10 * remotes_lanes[2][0] + remotes_lanes[2][1]};
+							cout << "costs: " << costs[0] << " " << costs[1] << " " << costs[2] << endl;
+							double cost = 999;
+							target_lane = 1;
+							for (int i = 0; i<costs.size(); i++)
+							{
+								if (costs[i]<cost)
+								{
+									cost = costs[i];
+									target_lane = i;
+								}
+							}
+							cout << car_s << " chose target_lane " << target_lane << endl;
+						}						
 					}
 					
 					// points to interpolate with spline
@@ -423,26 +447,16 @@ int main() {
 						ptsy.push_back(ref_y);
 					}
 
-					// make sure first added spine point is ahead of previous path
-					// if (change_lanes)
-					// {
-					// 	int change = (target_lane - current_lane)*2/abs(target_lane - current_lane);
-					// 	for (int i = 1; i<6; i++)
-					// 	{
-					// 		vector<double> next_sparse_wp = getXY(ref_s+10*i, current_lane+change, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-					// 		ptsx.push_back(next_sparse_wp[0]);
-					// 		ptsy.push_back(next_sparse_wp[1]);
-					// 	}
-					// }
-					// else
-					// {
-						for (int i = 1; i < 3; i++)
-						{
-							vector<double> next_sparse_wp = getXY(ref_s + 30 * i, getDfromLane(target_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
-							ptsx.push_back(next_sparse_wp[0]);
-							ptsy.push_back(next_sparse_wp[1]);
-						}
-					// }
+					//make sure first added spine point is ahead of previous path
+					vector<double> next_sparse_wp = getXY(ref_s + 40, getDfromLane(target_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+					ptsx.push_back(next_sparse_wp[0]);
+					ptsy.push_back(next_sparse_wp[1]);
+					for (int i = 1; i < 3; i++)
+					{
+						vector<double> next_sparse_wp = getXY(ref_s + 40 + 10 * i, getDfromLane(target_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+						ptsx.push_back(next_sparse_wp[0]);
+						ptsy.push_back(next_sparse_wp[1]);
+					}
 
 					// transorm to local coords
 					// cout << "Points for splining:" << endl;
@@ -519,7 +533,7 @@ int main() {
 						double last_speed_y = ppathy[previous_path_size-1] - ppathy[previous_path_size-2];
 						last_speed = sqrt(last_speed_x*last_speed_x+last_speed_y*last_speed_y)/wp_time_gap;
 					}
-					if (abs(target_speed - last_speed)/wp_time_gap < accel_max/2)
+					if (abs(target_speed - last_speed)/wp_time_gap < accel_max*0.75)
 					{
 						wp_spacing = target_speed * wp_time_gap;
 						//cout << " got to match speed " << endl;
@@ -527,7 +541,7 @@ int main() {
 					else
 					{
 						change = (target_speed - last_speed)/abs(target_speed - last_speed);
-						delta_speed = change*accel_max/2*wp_time_gap;
+						delta_speed = change*accel_max*0.75*wp_time_gap;
 						delta_wp = delta_speed * wp_time_gap;
 						wp_spacing_final = target_speed * wp_time_gap;
 						wp_spacing = last_speed * wp_time_gap;
